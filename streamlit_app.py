@@ -77,53 +77,57 @@ with col1:
 with col2:
     st.metric("Fehlerrate", f"{error_rate:.2%}")
 
-# --- Eves Informationsgewinn (nur bei relevanten Schlüsselbits)
+# --- Eves Informationsgewinn (nur bei gleichen Basen von Alice, Bob und Eve und korrektem Bit)
 if eve_active:
-    relevant_indices = basis_alice == basis_bob
     eve_bits_array = np.array(bits_eve)
-    eve_correct_bits = np.sum((eve_bits_array == bits_alice) & relevant_indices)
-    eve_info_rate = (eve_correct_bits / total_matching) if total_matching > 0 else 0
+    
+    # Indices, wo Alice, Bob und Eve die gleiche Basis haben
+    triple_match = (basis_alice == basis_bob) & (basis_alice == basis_eve)
+    
+    # Eve hat hier sicher das korrekte Bit abgefangen
+    eve_sure_indices = triple_match & (eve_bits_array == bits_alice)
+    eve_sure_bits = np.sum(eve_sure_indices)
+    
+    eve_info_rate = eve_sure_bits / total_matching if total_matching > 0 else 0
 
-    st.subheader("🕵️‍♀️ Eves Informationsgewinn (bezogen auf den potentiellen Schlüssel)")
+    st.subheader("🕵️‍♀️ Eves Informationsgewinn (sicher erkannt)")
 
     col1, col2 = st.columns(2)
     with col1:
-        st.metric("Richtige Schlüsselbits abgefangen", eve_correct_bits)
+        st.metric("Sicher abgefangene Schlüsselbits", eve_sure_bits)
     with col2:
         st.metric("Informationsrate", f"{eve_info_rate:.2%}")
 
-    # Erweiterte Einflussanalyse
+    # --- Neue Berechnung für das Kreisdiagramm mit 3 Kategorien ---
     bob_bits_array = np.array(bits_bob)
-    cond_key = relevant_indices
-    cond_eve_right = eve_bits_array == bits_alice
-    cond_bob_right = bob_bits_array == bits_alice
 
-    cat1 = np.sum(cond_key & cond_eve_right & cond_bob_right)   # Eve richtig, Bob richtig
-    cat2 = np.sum(cond_key & ~cond_eve_right & cond_bob_right)  # Eve falsch, Bob richtig
-    cat3 = np.sum(cond_key & cond_eve_right & ~cond_bob_right)  # Eve richtig, Bob falsch
-    cat4 = np.sum(cond_key & ~cond_eve_right & ~cond_bob_right) # Eve falsch, Bob falsch
+    # Gemeinsame Basen Alice=Bob
+    cond_alice_bob = basis_alice == basis_bob
 
-    st.subheader("📊 Erweiterte Analyse: Eves Einfluss auf Schlüsselbits")
+    # Eve gleiche Basis wie Alice und Bob
+    cond_eve_same = (basis_alice == basis_eve) & cond_alice_bob
 
-    # Metriken nebeneinander
-    #cols = st.columns(4)
-    #cols[0].metric("Eve richtig & Bob richtig", cat1)
-    #cols[1].metric("Eve falsch & Bob richtig", cat2)
-    #cols[2].metric("Eve richtig & Bob falsch", cat3)
-    #cols[3].metric("Eve falsch & Bob falsch", cat4)
+    # Eve andere Basis als Alice/Bob bei gemeinsamer Alice-Bob-Basis
+    cond_eve_diff = (basis_alice != basis_eve) & cond_alice_bob
 
-    # Kreisdiagramm (automatisch, ohne Checkbox)
+    # Kategorie 1: Eve gleiche Basis, Eve richtig, Bob richtig (unerkannt gestohlen)
+    cat1 = np.sum(cond_eve_same & (eve_bits_array == bits_alice) & (bob_bits_array == bits_alice))
+
+    # Kategorie 2: Eve andere Basis, Bob richtig (kein Fehler bemerkt)
+    cat2 = np.sum(cond_eve_diff & (bob_bits_array == bits_alice))
+
+    # Kategorie 3: Eve andere Basis, Bob falsch (Fehler bemerkt)
+    cat3 = np.sum(cond_eve_diff & (bob_bits_array != bits_alice))
+
     labels = [
-        "Eve hat richtiges Bit unentdeckt gestohlen",
-        "Eve hat falsches Bit blieb aber unentdeckt",
-        "Eve hat richtiges Bit und wurde entdeckt",
-        "Eve hat falsches Bit wurde aber entdeckt"
+        "Eve hat in gleicher Basis gemessen und unerkannt gestohlen",
+        "Alice & Bob gleiche Basis, Eve andere Basis, Bob hat nichts bemerkt",
+        "Alice & Bob gleiche Basis, Eve andere Basis, Bob hat Fehler bemerkt"
     ]
-    values = [cat1, cat2, cat3, cat4]
-    colors = ["#4CAF50", "#8BC34A", "#FF9800", "#F44336"]
+    values = [cat1, cat2, cat3]
+    colors = ["#4CAF50", "#8BC34A", "#F44336"]
 
     fig, ax = plt.subplots()
     ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors)
     ax.axis('equal')
     st.pyplot(fig)
-
